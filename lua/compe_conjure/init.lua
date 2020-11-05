@@ -1,32 +1,12 @@
-local Pattern = require'compe.pattern'
--- TODO: Activate only when in the filetype match g:compe_conjure_fts
--- For now just {"fennel", "clojure", "janet"}
-
--- FIXME: When opening a supported filetype,
--- require'compe':register_lua_source('conjure', require'compe_conjure')
--- need to be call. It should be activated automatically?
-
--- FIXME: do not show duplications and same keyword with
--- differences such as TODO and TODO. Also do not show duplications
--- with other sources like buffer source.
-
--- FIXME: do not show a full suggestion until triggerd by /, like str/format.
--- show str until / is added show what is under str
-
 local Source = {}
-
-local function completor(input)
-  -- Only works if a server is supported, otherwise returns error
-  local promise_id = require('conjure.eval')['completions-promise'](input)
-  local checker = require'conjure.promise'
-  if checker['done?'](promise_id) then
-    return checker.close(promise_id)
-    -- returns a list of kv = word, value
-  end
-end
+local ConjureEval = require'conjure.eval'
+local ConjurePromise = require'conjure.promise'
 
 function Source.new()
-  return setmetatable({}, { __index = Source })
+  local self = setmetatable({}, { __index = Source })
+  self.timer = nil
+  self.promise_id = nil
+  return self
 end
 
 function Source.get_metadata(self)
@@ -38,22 +18,54 @@ function Source.get_metadata(self)
 end
 
 function Source.datermine(self, context)
-  return {
-    keyword_pattern_offset = Pattern:get_keyword_pattern_offset(context)
-    -- TODO is this important?
-    -- matchstr(l:typed, '[0-9a-zA-Z.!$%&*+/:<=>?#_~\^\-\\]\+')
-  }
+  local offset = vim.regex('[0-9a-zA-Z.!$%&*+/:<=>?#_~\\^\\-\\\\]\\+$'):match_str(context.before_line)
+  if not offset then
+    return {}
+  end
+  return { keyword_pattern_offset = offset + 1 }
 end
 
-function Source.complete(self, context)
-  context.callback({
-    items = completor("")
-    -- FIXME: completor takes input, but has no effect on the returning results
-  })
+function Source.complete(self, args)
+  self:abort()
+
+  local input = args.context:get_input(args.keyword_pattern_offset)
+  self.promise_id = ConjureEval['completions-promise'](input)
+  self.timer = vim.loop.new_timer()
+  self.timer:start(100, 100, vim.schedule_wrap(function()
+    if ConjurePromise['done?'](self.promise_id) then
+      args.callback({
+        items = ConjurePromise.close(self.promise_id)
+      })
+      self:abort()
+    end
+  end))
 end
 
+function Source.abort(self)
+  if self.timer then
+    self.timer:stop()
+    self.timer:close()
+    self.timer = nil
+  end
+  if self.promise_id then
+    ConjurePromise.close(self.promise_id)
+    self.promise_id = nil
+  end
+end
 
-return Source
--- references
--- https://github.com/jlesquembre/coc-conjure/blob/master/index.js
--- https://github.com/thecontinium/asyncomplete-conjure.vim/blob/master/autoload/asyncomplete/sources/conjure.vim
+return Source.new()
+
+-- ISSUES:
+
+-- 1. Registering the source with `register_lua_source` don't work. I need to
+--    register it when in fennel or janet buffer for it work.
+
+-- 2. Slight delay when first activating the source. reproduce: at fennel or
+--    janet buffer, register the source then try to complete.
+
+-- 3. Different sources same the same result.
+
+
+-- TODO:
+-- 1. Activate only when in the filetype match {"fennel", "clojure", "janet"}
+-- 2. Don't show string/prefix till string/ is written.

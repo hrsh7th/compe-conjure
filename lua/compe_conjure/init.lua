@@ -11,9 +11,10 @@ end
 
 function Source.get_metadata(self)
   return {
-    priority = 10;
+    priority = 1000;
+    filetypes = {"fennel", "janet"};
     dub = 0;
-    menu = '[Conjure]';
+    menu = '[conjure]';
   }
 end
 
@@ -54,4 +55,10 @@ function Source.abort(self)
   end
 end
 
-return Source.new()
+return {
+  attach = function()
+    if vim.g.loaded_compe_conjure == nil then
+      require'compe':register_lua_source("conjure", Source.new())
+      vim.g.loaded_compe_conjure = 1
+    end
+  end}

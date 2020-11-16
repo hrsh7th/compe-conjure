@@ -23,8 +23,47 @@ function Source.datermine(self, context)
   if not offset then
     return {}
   end
-  return { keyword_pattern_offset = offset + 1 }
+  local trigger
+  if vim.fn.index({'.'}, context.before_char) >= 0 then
+    trigger = context.col
+  else
+    trigger = -1
+  end
+  if vim.bo.filetype == 'fennel' then
+    return {
+      keyword_pattern_offset = offset + 1,
+      trigger_character_offset =  trigger
+    }
+  else
+    return { keyword_pattern_offset = offset + 1, }
+  end
 end
+
+local function lua_comp_get(s_arr, prefix, r_arr)
+  -- TODO: include global variables
+  if #s_arr == 0 then return end
+  local head = table.remove(s_arr, 1)
+  if not r_arr then r_arr = _G end
+  if type(r_arr[head]) == 'table' then
+    return lua_comp_get(s_arr, prefix .. head .. '.', r_arr[head])
+  end
+  local keys = vim.tbl_keys(r_arr)
+  table.sort(keys)
+  local candiates = {}
+  for _, v in ipairs(keys) do
+    local regex = '^' .. string.gsub(head, '%*', '.*')
+    if v:find(regex) then table.insert(candiates, {word = prefix .. v}) end
+  end
+  return candiates
+end
+
+function lua_comp(input)
+  local index = input:find('[%w._*]*$')
+  local cmd = input:sub(index)
+  return lua_comp_get(vim.split(cmd, '.', true), input:sub(1, index - 1))
+end
+
+-- print(vim.inspect(lua_comp("vim.s")))
 
 function Source.complete(self, args)
   self:abort()
@@ -32,11 +71,18 @@ function Source.complete(self, args)
   self.promise_id = ConjureEval['completions-promise'](input)
   self.timer = vim.loop.new_timer()
   self.timer:start(100, 100, vim.schedule_wrap(function()
-
     -- TODO make sure that the source is connected, otherwise return empty list
     if ConjurePromise['done?'](self.promise_id) then
+      local conjure_items = ConjurePromise.close(self.promise_id)
+      -- TODO: Trigger on "."
+      local res
+      if vim.bo.filetype == 'fennel' then
+        res = vim.tbl_extend('force', lua_comp(input), conjure_items)
+      else
+        res = conjure_items
+      end
       args.callback({
-        items = ConjurePromise.close(self.promise_id)
+        items = res
       })
       self:abort()
     end

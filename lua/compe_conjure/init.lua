@@ -63,7 +63,7 @@ function lua_comp(input)
   return lua_comp_get(vim.split(cmd, '.', true), input:sub(1, index - 1))
 end
 
--- print(vim.inspect(lua_comp("vim.s")))
+print(vim.inspect(lua_comp("vim.s")))
 
 function Source.complete(self, args)
   self:abort()
@@ -77,7 +77,7 @@ function Source.complete(self, args)
       -- TODO: Trigger on "."
       local res
       if vim.bo.filetype == 'fennel' then
-        res = vim.tbl_extend('force', lua_comp(input), conjure_items)
+        res = vim.tbl_extend('force', conjure_items, lua_comp(input))
       else
         res = conjure_items
       end

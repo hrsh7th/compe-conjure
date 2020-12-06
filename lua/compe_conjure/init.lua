@@ -101,10 +101,5 @@ function Source.abort(self)
   end
 end
 
-return {
-  attach = function()
-    if vim.g.loaded_compe_conjure == nil then
-      require'compe':register_lua_source("conjure", Source.new())
-      vim.g.loaded_compe_conjure = 1
-    end
-  end}
+return Source.new()
+
